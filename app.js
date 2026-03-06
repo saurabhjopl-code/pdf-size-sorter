@@ -45,7 +45,9 @@ statusDiv.innerText = "Scanning page " + pageNum + " of " + pdf.numPages;
 const page = await pdf.getPage(pageNum);
 const textContent = await page.getTextContent();
 
-const size = extractSize(textContent.items);
+let pageText = textContent.items.map(i => i.str).join(" ").toUpperCase();
+
+const size = detectSize(pageText);
 
 pagesBySize[size].push(pageNum);
 
@@ -63,42 +65,25 @@ downloadBtn.disabled = false;
 
 }
 
-function extractSize(items){
+function detectSize(text){
 
-for(let i=0;i<items.length;i++){
+if(text.includes(" XXXL ")) return "3XL";
+if(text.includes(" 2XL ")) return "XXL";
 
-let word = items[i].str.trim().toUpperCase();
+for(const size of SIZE_ORDER){
 
-if(word === "SIZE"){
-
-if(items[i+1]){
-
-let val = items[i+1].str.trim().toUpperCase();
-
-val = normalizeSize(val);
-
-if(SIZE_ORDER.includes(val)){
-return val;
-}
-
-}
-
+if(
+text.includes(" "+size+" ") ||
+text.includes("-"+size) ||
+text.includes(size+"\n") ||
+text.endsWith(size)
+){
+return size;
 }
 
 }
 
 return "NON-SIZE";
-
-}
-
-function normalizeSize(size){
-
-size = size.replace(/\s/g,"");
-
-if(size === "2XL") return "XXL";
-if(size === "XXXL") return "3XL";
-
-return size;
 
 }
 
