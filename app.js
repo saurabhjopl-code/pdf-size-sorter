@@ -26,9 +26,12 @@ statusDiv.innerText = "Reading PDF...";
 summaryBody.innerHTML = "";
 downloadBtn.disabled = true;
 
-const arrayBuffer = await file.arrayBuffer();
+const originalBuffer = await file.arrayBuffer();
 
-const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+/* clone buffer to avoid detached ArrayBuffer error */
+const pdfBuffer = originalBuffer.slice(0);
+
+const pdf = await pdfjsLib.getDocument({data:pdfBuffer}).promise;
 
 const pagesBySize = {};
 
@@ -42,12 +45,9 @@ statusDiv.innerText = "Scanning page " + pageNum + " of " + pdf.numPages;
 const page = await pdf.getPage(pageNum);
 const textContent = await page.getTextContent();
 
-let pageText = textContent.items.map(item=>item.str).join(" ");
-pageText = pageText.toUpperCase();
+const size = extractSize(textContent.items);
 
-let detectedSize = detectSize(pageText);
-
-pagesBySize[detectedSize].push(pageNum);
+pagesBySize[size].push(pageNum);
 
 }
 
@@ -55,7 +55,7 @@ renderSummary(pagesBySize);
 
 statusDiv.innerText = "Building sorted PDF...";
 
-await buildSortedPDF(arrayBuffer, pagesBySize);
+await buildSortedPDF(originalBuffer, pagesBySize);
 
 statusDiv.innerText = "Sorting complete";
 
@@ -63,22 +63,42 @@ downloadBtn.disabled = false;
 
 }
 
-function detectSize(text){
+function extractSize(items){
 
-for(const size of SIZE_ORDER){
+for(let i=0;i<items.length;i++){
 
-if(
-text.includes(" "+size+" ") ||
-text.includes("-"+size) ||
-text.includes(size+"\n") ||
-text.endsWith(size)
-){
-return size;
+let word = items[i].str.trim().toUpperCase();
+
+if(word === "SIZE"){
+
+if(items[i+1]){
+
+let val = items[i+1].str.trim().toUpperCase();
+
+val = normalizeSize(val);
+
+if(SIZE_ORDER.includes(val)){
+return val;
+}
+
+}
+
 }
 
 }
 
 return "NON-SIZE";
+
+}
+
+function normalizeSize(size){
+
+size = size.replace(/\s/g,"");
+
+if(size === "2XL") return "XXL";
+if(size === "XXXL") return "3XL";
+
+return size;
 
 }
 
