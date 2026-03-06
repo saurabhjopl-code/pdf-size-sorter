@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 
@@ -10,35 +11,80 @@
 <link rel="stylesheet" href="style.css">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
 <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 </head>
 
 <body>
 
-<div class="container">
+<div class="app">
 
-<header>
+<header class="top-header">
 
 <img src="assets/logo.png" class="logo">
 
-<h1>PDF Label Size Sorter</h1>
+<h1 class="title">PDF Label Size Sorter</h1>
 
 </header>
 
+<div class="main-card">
+
+<!-- UPLOAD -->
+
 <section class="upload-box">
+
+<label for="pdfUpload" id="dropZone" class="drop-zone">
+
+<div class="upload-icon">📄</div>
+
+<div class="upload-title">Drag & Drop PDF</div>
+
+<div class="upload-sub">or click to browse file</div>
 
 <input type="file" id="pdfUpload" accept="application/pdf">
 
-<button id="processBtn">Process PDF</button>
+<div id="fileName" class="file-name"></div>
+
+</label>
+
+<!-- hidden button required for app.js -->
+
+<button id="processBtn" style="display:none"></button>
 
 </section>
+
+<!-- FILE INFO -->
+
+<section class="file-info" id="fileInfo" style="display:none">
+
+<div class="file-meta">
+
+<div><strong>File:</strong> <span id="infoName"></span></div>
+
+<div><strong>Size:</strong> <span id="infoSize"></span></div>
+
+<div><strong>Pages:</strong> <span id="infoPages">Scanning...</span></div>
+
+</div>
+
+</section>
+
+<!-- PROGRESS -->
 
 <section class="progress">
 
 <div id="status">Waiting for file...</div>
 
+<div class="progress-bar">
+<div id="progressFill"></div>
+</div>
+
 </section>
+
+<!-- SUMMARY -->
 
 <section class="summary">
 
@@ -59,15 +105,155 @@
 
 </section>
 
+<!-- DOWNLOAD -->
+
 <section class="download">
 
-<button id="downloadBtn" disabled>Download Sorted PDF</button>
+<button id="downloadBtn" class="primary-btn" disabled>
+Download Sorted PDF
+</button>
+
+<button id="downloadZipBtn" class="primary-btn" disabled>
+Download Size Wise ZIP
+</button>
 
 </section>
 
 </div>
 
+</div>
+
 <script src="app.js"></script>
+
+<script>
+
+/* ===============================
+UPLOAD + AUTO PROCESS
+=============================== */
+
+const dropZone = document.getElementById("dropZone");
+const uploadInput = document.getElementById("pdfUpload");
+const fileNameDisplay = document.getElementById("fileName");
+
+const infoBox = document.getElementById("fileInfo");
+const infoName = document.getElementById("infoName");
+const infoSize = document.getElementById("infoSize");
+const infoPages = document.getElementById("infoPages");
+
+const progressFill = document.getElementById("progressFill");
+
+
+/* DRAG OVER */
+
+dropZone.addEventListener("dragover",(e)=>{
+e.preventDefault();
+dropZone.classList.add("drag-active");
+});
+
+
+/* DRAG LEAVE */
+
+dropZone.addEventListener("dragleave",()=>{
+dropZone.classList.remove("drag-active");
+});
+
+
+/* DROP */
+
+dropZone.addEventListener("drop",(e)=>{
+
+e.preventDefault();
+dropZone.classList.remove("drag-active");
+
+const files = e.dataTransfer.files;
+
+if(files.length){
+
+const dt = new DataTransfer();
+dt.items.add(files[0]);
+
+uploadInput.files = dt.files;
+
+handleFile(files[0]);
+
+}
+
+});
+
+
+/* BROWSE */
+
+uploadInput.addEventListener("change",()=>{
+
+if(uploadInput.files.length){
+handleFile(uploadInput.files[0]);
+}
+
+});
+
+
+/* FILE HANDLER */
+
+async function handleFile(file){
+
+fileNameDisplay.innerText = "Loaded File: " + file.name;
+
+infoBox.style.display = "block";
+
+infoName.innerText = file.name;
+
+const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+infoSize.innerText = sizeMB + " MB";
+
+const buffer = await file.arrayBuffer();
+
+const loadingTask = pdfjsLib.getDocument({data:buffer});
+const pdf = await loadingTask.promise;
+
+infoPages.innerText = pdf.numPages;
+
+
+/* AUTO START PROCESS */
+
+setTimeout(()=>{
+document.getElementById("processBtn").click();
+},300);
+
+}
+
+
+/* ===============================
+PROGRESS BAR
+=============================== */
+
+const observer = new MutationObserver(()=>{
+
+const text = document.getElementById("status").innerText;
+
+const match = text.match(/page (\d+) \/ (\d+)/i);
+
+if(match){
+
+const current = parseInt(match[1]);
+const total = parseInt(match[2]);
+
+const percent = (current/total)*100;
+
+progressFill.style.width = percent + "%";
+
+}
+
+if(text.includes("Sorting complete")){
+progressFill.style.width = "100%";
+}
+
+});
+
+observer.observe(document.getElementById("status"),{
+childList:true
+});
+
+</script>
 
 </body>
 </html>

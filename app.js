@@ -1,10 +1,12 @@
 const fileInput = document.getElementById("pdfUpload");
 const processBtn = document.getElementById("processBtn");
 const downloadBtn = document.getElementById("downloadBtn");
+const downloadZipBtn = document.getElementById("downloadZipBtn");
 const statusDiv = document.getElementById("status");
 const summaryBody = document.querySelector("#summaryTable tbody");
 
 let sortedPdfBytes;
+let pages = [];   // added to store page mapping
 
 const sizeOrder = [
 "XS","S","M","L","XL",
@@ -77,6 +79,27 @@ return normalizeSize(bestCandidate);
 
 }
 
+/* ===========================
+   NEW - SKU EXTRACTION
+   =========================== */
+
+function extractSKU(items){
+
+for(let item of items){
+
+const text = item.str.trim();
+
+if(!text) continue;
+
+/* marketplace SKU pattern */
+if(text.startsWith("JOP")) return text;
+
+}
+
+return "UNKNOWN";
+
+}
+
 processBtn.addEventListener("click", async () => {
 
 const file = fileInput.files[0];
@@ -94,7 +117,7 @@ const pdfBuffer = arrayBuffer.slice(0);
 const loadingTask = pdfjsLib.getDocument({data: pdfBuffer});
 const pdf = await loadingTask.promise;
 
-let pages = [];
+pages = [];
 let sizeCount = {};
 let otherSizes = new Set();
 
@@ -106,6 +129,7 @@ const page = await pdf.getPage(i);
 const textContent = await page.getTextContent();
 
 let size = extractSize(textContent.items);
+let sku = extractSKU(textContent.items);
 
 if(!sizeOrder.includes(size)){
 otherSizes.add(size);
@@ -113,7 +137,8 @@ otherSizes.add(size);
 
 pages.push({
 pageNumber:i,
-size:size
+size:size,
+sku:sku
 });
 
 sizeCount[size] = (sizeCount[size] || 0) + 1;
@@ -122,19 +147,37 @@ sizeCount[size] = (sizeCount[size] || 0) + 1;
 
 const sortedOtherSizes = Array.from(otherSizes).sort();
 
+/* ===========================
+   UPDATED SORT (SIZE → SKU)
+   =========================== */
+
 pages.sort((a,b)=>{
 
 const aInBucket = sizeOrder.includes(a.size);
 const bInBucket = sizeOrder.includes(b.size);
 
+/* both NON-SIZE */
 if(!aInBucket && !bInBucket){
-return a.size.localeCompare(b.size);
+
+if(a.size === b.size){
+return a.sku.localeCompare(b.sku);
 }
 
+return a.size.localeCompare(b.size);
+
+}
+
+/* push NON-SIZE last */
 if(!aInBucket) return 1;
 if(!bInBucket) return -1;
 
-return sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
+/* compare size */
+const sizeCompare = sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
+
+if(sizeCompare !== 0) return sizeCompare;
+
+/* same size → sort by SKU */
+return a.sku.localeCompare(b.sku);
 
 });
 
@@ -157,6 +200,7 @@ sortedPdfBytes = await newPdf.save();
 renderSummary(sizeCount, sortedOtherSizes);
 
 downloadBtn.disabled = false;
+downloadZipBtn.disabled = false;
 
 statusDiv.innerText = "Sorting complete";
 
@@ -215,6 +259,63 @@ const a = document.createElement("a");
 
 a.href = url;
 a.download = "sorted_labels.pdf";
+
+a.click();
+
+});
+
+
+/* ===========================
+   SIZE ZIP EXPORT
+   =========================== */
+
+downloadZipBtn.addEventListener("click", async () => {
+
+const file = fileInput.files[0];
+const originalBuffer = await file.arrayBuffer();
+
+const zip = new JSZip();
+const { PDFDocument } = PDFLib;
+
+const sourcePdf = await PDFDocument.load(originalBuffer);
+
+let sizePages = {};
+
+pages.forEach(p => {
+
+if(!sizePages[p.size]){
+sizePages[p.size] = [];
+}
+
+sizePages[p.size].push(p.pageNumber-1);
+
+});
+
+for(const size in sizePages){
+
+const pdfDoc = await PDFDocument.create();
+
+const copiedPages = await pdfDoc.copyPages(
+sourcePdf,
+sizePages[size]
+);
+
+copiedPages.forEach(p => pdfDoc.addPage(p));
+
+const pdfBytes = await pdfDoc.save();
+
+zip.file(size + ".pdf", pdfBytes);
+
+}
+
+const zipBlob = await zip.generateAsync({type:"blob"});
+
+const url = URL.createObjectURL(zipBlob);
+
+const a = document.createElement("a");
+
+a.href = url;
+a.download = "labels_by_size.zip";
 
 a.click();
 
