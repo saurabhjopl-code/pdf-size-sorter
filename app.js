@@ -51,7 +51,10 @@ statusDiv.innerText = "Reading PDF...";
 
 const arrayBuffer = await file.arrayBuffer();
 
-const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
+/* IMPORTANT FIX */
+const pdfBuffer = arrayBuffer.slice(0);
+
+const loadingTask = pdfjsLib.getDocument({data: pdfBuffer});
 const pdf = await loadingTask.promise;
 
 let pages = [];
@@ -92,8 +95,9 @@ statusDiv.innerText = "Building sorted PDF...";
 
 const { PDFDocument } = PDFLib;
 
-const newPdf = await PDFDocument.create();
+/* LOAD ORIGINAL BUFFER AGAIN */
 const existingPdf = await PDFDocument.load(arrayBuffer);
+const newPdf = await PDFDocument.create();
 
 for(let p of pages){
 
