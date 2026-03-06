@@ -12,9 +12,7 @@ const sizeOrder = [
 ];
 
 function getSizeIndex(size){
-
 return sizeOrder.indexOf(size);
-
 }
 
 function extractSize(text){
@@ -40,21 +38,19 @@ processBtn.addEventListener("click", async () => {
 const file = fileInput.files[0];
 
 if(!file){
-
 alert("Upload PDF first");
-
 return;
-
 }
 
 statusDiv.innerText = "Reading PDF...";
 
 const arrayBuffer = await file.arrayBuffer();
 
-const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+/* FIX HERE */
+const loadingTask = pdfjsLib.getDocument({data:arrayBuffer});
+const pdf = await loadingTask.promise;
 
 let pages = [];
-
 let sizeCount = {};
 
 for(let i=1;i<=pdf.numPages;i++){
@@ -62,7 +58,6 @@ for(let i=1;i<=pdf.numPages;i++){
 statusDiv.innerText = "Reading page " + i;
 
 const page = await pdf.getPage(i);
-
 const textContent = await page.getTextContent();
 
 const text = textContent.items.map(t => t.str).join(" ");
@@ -75,9 +70,7 @@ size:size
 });
 
 if(size){
-
 sizeCount[size] = (sizeCount[size] || 0) + 1;
-
 }
 
 }
@@ -85,21 +78,17 @@ sizeCount[size] = (sizeCount[size] || 0) + 1;
 statusDiv.innerText = "Sorting pages...";
 
 pages.sort((a,b)=>{
-
 return getSizeIndex(a.size) - getSizeIndex(b.size);
-
 });
 
 const { PDFDocument } = PDFLib;
 
 const newPdf = await PDFDocument.create();
-
 const existingPdf = await PDFDocument.load(arrayBuffer);
 
 for(let p of pages){
 
 const [copied] = await newPdf.copyPages(existingPdf,[p.pageNumber-1]);
-
 newPdf.addPage(copied);
 
 }
@@ -125,7 +114,6 @@ if(counts[size]){
 let row = document.createElement("tr");
 
 row.innerHTML = `<td>${size}</td><td>${counts[size]}</td>`;
-
 summaryBody.appendChild(row);
 
 }
