@@ -6,16 +6,12 @@ const statusDiv = document.getElementById("status");
 const summaryBody = document.querySelector("#summaryTable tbody");
 
 let sortedPdfBytes;
-let pages = [];
+let pages = [];   // added to store page mapping
 
 const sizeOrder = [
 "XS","S","M","L","XL",
 "XXL","3XL","4XL","5XL","6XL","7XL","8XL","9XL","10XL"
 ];
-
-/* ===============================
-SIZE NORMALIZATION
-=============================== */
 
 function normalizeSize(size){
 
@@ -32,15 +28,11 @@ return "NON-SIZE";
 
 }
 
-/* ===============================
-MEESHO SIZE EXTRACTOR
-(Original stable logic)
-=============================== */
-
-function extractMeeshoSize(items){
+function extractSize(items){
 
 let sizeHeader = null;
 
+/* find the "Size" column header */
 for(let item of items){
 
 if(item.str.trim().toUpperCase() === "SIZE"){
@@ -58,9 +50,11 @@ const headerY = sizeHeader.transform[5];
 let bestCandidate = null;
 let bestDistance = Infinity;
 
+/* find text directly below the Size column */
 for(let item of items){
 
 const text = item.str.trim();
+
 if(!text) continue;
 
 const x = item.transform[4];
@@ -69,6 +63,7 @@ const y = item.transform[5];
 const dx = Math.abs(x - headerX);
 const dy = headerY - y;
 
+/* must be same column and below header */
 if(dx < 15 && dy > 5 && dy < 60){
 
 if(dy < bestDistance){
@@ -84,59 +79,26 @@ return normalizeSize(bestCandidate);
 
 }
 
-/* ===============================
-FLIPKART SIZE EXTRACTOR
-=============================== */
+/* ===========================
+   NEW - SKU EXTRACTION
+   =========================== */
 
-function extractFlipkartSize(items){
+function extractSKU(items){
 
 for(let item of items){
 
-const line = item.str.trim();
+const text = item.str.trim();
 
-if(line.includes("|")){
+if(!text) continue;
 
-const parts = line.split("|");
-
-if(parts.length > 0){
-
-const sku = parts[0].trim();
-
-const match = sku.match(/-(XS|S|M|L|XL|XXL|3XL|4XL|5XL|6XL|7XL|8XL|9XL|10XL)$/i);
-
-if(match){
-return normalizeSize(match[1]);
-}
+/* marketplace SKU pattern */
+if(text.startsWith("JOP")) return text;
 
 }
 
-}
+return "UNKNOWN";
 
 }
-
-return "NON-SIZE";
-
-}
-
-/* ===============================
-LABEL TYPE DETECTION
-=============================== */
-
-function extractSize(items){
-
-const pageText = items.map(i=>i.str).join(" ").toUpperCase();
-
-if(pageText.includes("SKU ID") && pageText.includes("DESCRIPTION")){
-return extractFlipkartSize(items);
-}
-
-return extractMeeshoSize(items);
-
-}
-
-/* ===============================
-PROCESS PDF
-=============================== */
 
 processBtn.addEventListener("click", async () => {
 
@@ -156,7 +118,6 @@ const loadingTask = pdfjsLib.getDocument({data: pdfBuffer});
 const pdf = await loadingTask.promise;
 
 pages = [];
-
 let sizeCount = {};
 let otherSizes = new Set();
 
@@ -168,6 +129,7 @@ const page = await pdf.getPage(i);
 const textContent = await page.getTextContent();
 
 let size = extractSize(textContent.items);
+let sku = extractSKU(textContent.items);
 
 if(!sizeOrder.includes(size)){
 otherSizes.add(size);
@@ -175,7 +137,8 @@ otherSizes.add(size);
 
 pages.push({
 pageNumber:i,
-size:size
+size:size,
+sku:sku
 });
 
 sizeCount[size] = (sizeCount[size] || 0) + 1;
@@ -184,23 +147,37 @@ sizeCount[size] = (sizeCount[size] || 0) + 1;
 
 const sortedOtherSizes = Array.from(otherSizes).sort();
 
-/* ===============================
-SORT PAGES
-=============================== */
+/* ===========================
+   UPDATED SORT (SIZE → SKU)
+   =========================== */
 
 pages.sort((a,b)=>{
 
 const aInBucket = sizeOrder.includes(a.size);
 const bInBucket = sizeOrder.includes(b.size);
 
+/* both NON-SIZE */
 if(!aInBucket && !bInBucket){
-return a.size.localeCompare(b.size);
+
+if(a.size === b.size){
+return a.sku.localeCompare(b.sku);
 }
 
+return a.size.localeCompare(b.size);
+
+}
+
+/* push NON-SIZE last */
 if(!aInBucket) return 1;
 if(!bInBucket) return -1;
 
-return sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
+/* compare size */
+const sizeCompare = sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
+
+if(sizeCompare !== 0) return sizeCompare;
+
+/* same size → sort by SKU */
+return a.sku.localeCompare(b.sku);
 
 });
 
@@ -228,10 +205,6 @@ downloadZipBtn.disabled = false;
 statusDiv.innerText = "Sorting complete";
 
 });
-
-/* ===============================
-SUMMARY TABLE
-=============================== */
 
 function renderSummary(counts, otherSizes){
 
@@ -268,7 +241,6 @@ total += counts[size];
 let totalRow = document.createElement("tr");
 
 totalRow.innerHTML = `
-
 <td style="font-weight:bold">Grand Total</td>
 <td style="font-weight:bold">${total}</td>
 `;
@@ -277,16 +249,14 @@ summaryBody.appendChild(totalRow);
 
 }
 
-/* ===============================
-DOWNLOAD SORTED PDF
-=============================== */
-
 downloadBtn.addEventListener("click",()=>{
 
 const blob = new Blob([sortedPdfBytes],{type:"application/pdf"});
+
 const url = URL.createObjectURL(blob);
 
 const a = document.createElement("a");
+
 a.href = url;
 a.download = "sorted_labels.pdf";
 
@@ -294,9 +264,10 @@ a.click();
 
 });
 
-/* ===============================
-SIZE ZIP EXPORT
-=============================== */
+
+/* ===========================
+   SIZE ZIP EXPORT
+   =========================== */
 
 downloadZipBtn.addEventListener("click", async () => {
 
