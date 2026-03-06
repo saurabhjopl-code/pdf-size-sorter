@@ -17,7 +17,7 @@ return sizeOrder.indexOf(size);
 
 function extractSize(text){
 
-const match = text.match(/\b(\d?XL|XXXL|XXL|XL|L|M|S)\b/i);
+const match = text.match(/\b(\d{1,2}XL|XXXL|XXL|XL|L|M|S)\b/i);
 
 if(match){
 
@@ -44,10 +44,14 @@ return;
 
 statusDiv.innerText = "Reading PDF...";
 
+/* READ FILE */
 const arrayBuffer = await file.arrayBuffer();
 
-/* FIX HERE */
-const loadingTask = pdfjsLib.getDocument({data:arrayBuffer});
+/* CLONE BUFFER (IMPORTANT FIX) */
+const pdfBuffer = arrayBuffer.slice(0);
+
+/* LOAD PDFJS */
+const loadingTask = pdfjsLib.getDocument({data: pdfBuffer});
 const pdf = await loadingTask.promise;
 
 let pages = [];
@@ -55,7 +59,7 @@ let sizeCount = {};
 
 for(let i=1;i<=pdf.numPages;i++){
 
-statusDiv.innerText = "Reading page " + i;
+statusDiv.innerText = "Reading page " + i + " / " + pdf.numPages;
 
 const page = await pdf.getPage(i);
 const textContent = await page.getTextContent();
@@ -75,11 +79,17 @@ sizeCount[size] = (sizeCount[size] || 0) + 1;
 
 }
 
+/* SORT PAGES BY SIZE */
+
 statusDiv.innerText = "Sorting pages...";
 
 pages.sort((a,b)=>{
 return getSizeIndex(a.size) - getSizeIndex(b.size);
 });
+
+/* BUILD NEW PDF */
+
+statusDiv.innerText = "Building sorted PDF...";
 
 const { PDFDocument } = PDFLib;
 
@@ -95,11 +105,13 @@ newPdf.addPage(copied);
 
 sortedPdfBytes = await newPdf.save();
 
+/* SUMMARY */
+
 renderSummary(sizeCount);
 
 downloadBtn.disabled = false;
 
-statusDiv.innerText = "Processing complete";
+statusDiv.innerText = "Sorting complete";
 
 });
 
