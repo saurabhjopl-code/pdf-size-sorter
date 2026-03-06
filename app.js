@@ -13,35 +13,67 @@ const sizeOrder = [
 
 function normalizeSize(size){
 
-if(!size) return null;
+if(!size) return "NON-SIZE";
 
 size = size.toUpperCase().trim();
 
 if(size === "2XL") size = "XXL";
 if(size === "XXXL") size = "3XL";
 
-return size;
-
-}
-
-function extractSize(text){
-
-text = text.toUpperCase();
-
-/* STRICT size detection */
-const match = text.match(/\b(10XL|9XL|8XL|7XL|6XL|5XL|4XL|3XL|XXXL|XXL|XL|XS|M|L|S)\b/);
-
-if(match){
-
-let size = match[1];
-
-size = normalizeSize(size);
-
-return size;
-
-}
+if(sizeOrder.includes(size)) return size;
 
 return "NON-SIZE";
+
+}
+
+function extractSize(items){
+
+let sizeHeader = null;
+
+/* find the "Size" column header */
+for(let item of items){
+
+if(item.str.trim().toUpperCase() === "SIZE"){
+sizeHeader = item;
+break;
+}
+
+}
+
+if(!sizeHeader) return "NON-SIZE";
+
+const headerX = sizeHeader.transform[4];
+const headerY = sizeHeader.transform[5];
+
+let bestCandidate = null;
+let bestDistance = Infinity;
+
+/* find text directly below the Size column */
+for(let item of items){
+
+const text = item.str.trim();
+
+if(!text) continue;
+
+const x = item.transform[4];
+const y = item.transform[5];
+
+const dx = Math.abs(x - headerX);
+const dy = headerY - y;
+
+/* must be same column and below header */
+if(dx < 15 && dy > 5 && dy < 60){
+
+if(dy < bestDistance){
+bestDistance = dy;
+bestCandidate = text;
+}
+
+}
+
+}
+
+return normalizeSize(bestCandidate);
 
 }
 
@@ -73,9 +105,7 @@ statusDiv.innerText = "Reading page " + i + " / " + pdf.numPages;
 const page = await pdf.getPage(i);
 const textContent = await page.getTextContent();
 
-const text = textContent.items.map(t => t.str).join(" ");
-
-let size = extractSize(text);
+let size = extractSize(textContent.items);
 
 if(!sizeOrder.includes(size)){
 otherSizes.add(size);
