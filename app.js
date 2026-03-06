@@ -13,70 +13,35 @@ const sizeOrder = [
 
 function normalizeSize(size){
 
-if(!size) return "NON-SIZE";
+if(!size) return null;
 
 size = size.toUpperCase().trim();
 
 if(size === "2XL") size = "XXL";
 if(size === "XXXL") size = "3XL";
 
-if(sizeOrder.includes(size)) return size;
+return size;
+
+}
+
+function extractSize(text){
+
+text = text.toUpperCase();
+
+/* STRICT size detection */
+const match = text.match(/\b(10XL|9XL|8XL|7XL|6XL|5XL|4XL|3XL|XXXL|XXL|XL|XS|M|L|S)\b/);
+
+if(match){
+
+let size = match[1];
+
+size = normalizeSize(size);
+
+return size;
+
+}
 
 return "NON-SIZE";
-
-}
-
-function extractSizeFromItems(items){
-
-let sizeHeaderX = null;
-
-for(let item of items){
-
-const text = item.str.trim().toUpperCase();
-
-if(text === "SIZE"){
-
-sizeHeaderX = item.transform[4];
-break;
-
-}
-
-}
-
-if(sizeHeaderX === null) return "NON-SIZE";
-
-let closestItem = null;
-let minDistance = Infinity;
-
-for(let item of items){
-
-const x = item.transform[4];
-const y = item.transform[5];
-
-const text = item.str.trim();
-
-if(!text) continue;
-
-const dx = Math.abs(x - sizeHeaderX);
-
-if(dx < 20){
-
-const dy = Math.abs(y);
-
-if(dy < minDistance){
-
-minDistance = dy;
-closestItem = item;
-
-}
-
-}
-
-}
-
-if(!closestItem) return "NON-SIZE";
-
-return normalizeSize(closestItem.str);
 
 }
 
@@ -108,7 +73,9 @@ statusDiv.innerText = "Reading page " + i + " / " + pdf.numPages;
 const page = await pdf.getPage(i);
 const textContent = await page.getTextContent();
 
-let size = extractSizeFromItems(textContent.items);
+const text = textContent.items.map(t => t.str).join(" ");
+
+let size = extractSize(text);
 
 if(!sizeOrder.includes(size)){
 otherSizes.add(size);
