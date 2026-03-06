@@ -7,29 +7,38 @@ const summaryBody = document.querySelector("#summaryTable tbody");
 let sortedPdfBytes;
 
 const sizeOrder = [
-"S","M","L","XL","XXL",
-"3XL","4XL","5XL","6XL","7XL","8XL","9XL","10XL"
+"XS","S","M","L","XL",
+"XXL","3XL","4XL","5XL","6XL","7XL","8XL","9XL","10XL"
 ];
 
-function getSizeIndex(size){
-return sizeOrder.indexOf(size);
-}
+function normalizeSize(size){
 
-function extractSize(text){
+if(!size) return null;
 
-const match = text.match(/\b(\d{1,2}XL|XXXL|XXL|XL|L|M|S)\b/i);
+size = size.toUpperCase().trim();
 
-if(match){
-
-let size = match[1].toUpperCase();
-
+if(size === "2XL") size = "XXL";
 if(size === "XXXL") size = "3XL";
 
 return size;
 
 }
 
-return null;
+function extractSize(text){
+
+const match = text.match(/\b(\d{1,2}XL|XXXL|XXL|XL|L|M|S|XS|FREE SIZE|FREESIZE|FS|UNSTITCHED|UN-STITCHED|SEMI-STITCHED)\b/i);
+
+if(match){
+
+let size = match[1].toUpperCase();
+
+size = normalizeSize(size);
+
+return size;
+
+}
+
+return "UNKNOWN";
 
 }
 
@@ -44,18 +53,15 @@ return;
 
 statusDiv.innerText = "Reading PDF...";
 
-/* READ FILE */
 const arrayBuffer = await file.arrayBuffer();
-
-/* CLONE BUFFER (IMPORTANT FIX) */
 const pdfBuffer = arrayBuffer.slice(0);
 
-/* LOAD PDFJS */
 const loadingTask = pdfjsLib.getDocument({data: pdfBuffer});
 const pdf = await loadingTask.promise;
 
 let pages = [];
 let sizeCount = {};
+let otherSizes = new Set();
 
 for(let i=1;i<=pdf.numPages;i++){
 
@@ -66,28 +72,38 @@ const textContent = await page.getTextContent();
 
 const text = textContent.items.map(t => t.str).join(" ");
 
-const size = extractSize(text);
+let size = extractSize(text);
+
+if(!sizeOrder.includes(size)){
+otherSizes.add(size);
+}
 
 pages.push({
 pageNumber:i,
 size:size
 });
 
-if(size){
 sizeCount[size] = (sizeCount[size] || 0) + 1;
-}
 
 }
 
-/* SORT PAGES BY SIZE */
-
-statusDiv.innerText = "Sorting pages...";
+const sortedOtherSizes = Array.from(otherSizes).sort();
 
 pages.sort((a,b)=>{
-return getSizeIndex(a.size) - getSizeIndex(b.size);
-});
 
-/* BUILD NEW PDF */
+const aInBucket = sizeOrder.includes(a.size);
+const bInBucket = sizeOrder.includes(b.size);
+
+if(!aInBucket && !bInBucket){
+return a.size.localeCompare(b.size);
+}
+
+if(!aInBucket) return -1;
+if(!bInBucket) return 1;
+
+return sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
+
+});
 
 statusDiv.innerText = "Building sorted PDF...";
 
@@ -105,9 +121,7 @@ newPdf.addPage(copied);
 
 sortedPdfBytes = await newPdf.save();
 
-/* SUMMARY */
-
-renderSummary(sizeCount);
+renderSummary(sizeCount, sortedOtherSizes);
 
 downloadBtn.disabled = false;
 
@@ -115,22 +129,46 @@ statusDiv.innerText = "Sorting complete";
 
 });
 
-function renderSummary(counts){
+function renderSummary(counts, otherSizes){
 
 summaryBody.innerHTML = "";
+
+let total = 0;
+
+otherSizes.forEach(size => {
+
+let row = document.createElement("tr");
+row.innerHTML = `<td>${size}</td><td>${counts[size]}</td>`;
+
+summaryBody.appendChild(row);
+
+total += counts[size];
+
+});
 
 sizeOrder.forEach(size => {
 
 if(counts[size]){
 
 let row = document.createElement("tr");
-
 row.innerHTML = `<td>${size}</td><td>${counts[size]}</td>`;
+
 summaryBody.appendChild(row);
+
+total += counts[size];
 
 }
 
 });
+
+let totalRow = document.createElement("tr");
+
+totalRow.innerHTML = `
+<td style="font-weight:bold">Grand Total</td>
+<td style="font-weight:bold">${total}</td>
+`;
+
+summaryBody.appendChild(totalRow);
 
 }
 
