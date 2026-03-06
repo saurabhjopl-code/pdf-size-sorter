@@ -13,32 +13,28 @@ const sizeOrder = [
 
 function normalizeSize(size){
 
-if(!size) return null;
+if(!size) return "NON-SIZE";
 
 size = size.toUpperCase().trim();
 
 if(size === "2XL") size = "XXL";
 if(size === "XXXL") size = "3XL";
 
-return size;
+if(sizeOrder.includes(size)) return size;
+
+return "NON-SIZE";
 
 }
 
 function extractSize(text){
 
-const match = text.match(/\b(\d{1,2}XL|XXXL|XXL|XL|L|M|S|XS|FREE SIZE|FREESIZE|FS|UNSTITCHED|UN-STITCHED|SEMI-STITCHED)\b/i);
+const match = text.match(/\b(\d{1,2}XL|XXXL|XXL|XL|L|M|S|XS)\b/i);
 
 if(match){
-
-let size = match[1].toUpperCase();
-
-size = normalizeSize(size);
-
-return size;
-
+return normalizeSize(match[1]);
 }
 
-return "UNKNOWN";
+return "NON-SIZE";
 
 }
 
@@ -54,14 +50,12 @@ return;
 statusDiv.innerText = "Reading PDF...";
 
 const arrayBuffer = await file.arrayBuffer();
-const pdfBuffer = arrayBuffer.slice(0);
 
-const loadingTask = pdfjsLib.getDocument({data: pdfBuffer});
+const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
 const pdf = await loadingTask.promise;
 
 let pages = [];
 let sizeCount = {};
-let otherSizes = new Set();
 
 for(let i=1;i<=pdf.numPages;i++){
 
@@ -74,10 +68,6 @@ const text = textContent.items.map(t => t.str).join(" ");
 
 let size = extractSize(text);
 
-if(!sizeOrder.includes(size)){
-otherSizes.add(size);
-}
-
 pages.push({
 pageNumber:i,
 size:size
@@ -87,19 +77,12 @@ sizeCount[size] = (sizeCount[size] || 0) + 1;
 
 }
 
-const sortedOtherSizes = Array.from(otherSizes).sort();
-
 pages.sort((a,b)=>{
 
-const aInBucket = sizeOrder.includes(a.size);
-const bInBucket = sizeOrder.includes(b.size);
+if(a.size === "NON-SIZE" && b.size !== "NON-SIZE") return -1;
+if(a.size !== "NON-SIZE" && b.size === "NON-SIZE") return 1;
 
-if(!aInBucket && !bInBucket){
-return a.size.localeCompare(b.size);
-}
-
-if(!aInBucket) return -1;
-if(!bInBucket) return 1;
+if(a.size === "NON-SIZE" && b.size === "NON-SIZE") return 0;
 
 return sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
 
@@ -121,7 +104,7 @@ newPdf.addPage(copied);
 
 sortedPdfBytes = await newPdf.save();
 
-renderSummary(sizeCount, sortedOtherSizes);
+renderSummary(sizeCount);
 
 downloadBtn.disabled = false;
 
@@ -129,22 +112,21 @@ statusDiv.innerText = "Sorting complete";
 
 });
 
-function renderSummary(counts, otherSizes){
+function renderSummary(counts){
 
 summaryBody.innerHTML = "";
 
 let total = 0;
 
-otherSizes.forEach(size => {
+if(counts["NON-SIZE"]){
 
 let row = document.createElement("tr");
-row.innerHTML = `<td>${size}</td><td>${counts[size]}</td>`;
-
+row.innerHTML = `<td>NON-SIZE</td><td>${counts["NON-SIZE"]}</td>`;
 summaryBody.appendChild(row);
 
-total += counts[size];
+total += counts["NON-SIZE"];
 
-});
+}
 
 sizeOrder.forEach(size => {
 
@@ -152,7 +134,6 @@ if(counts[size]){
 
 let row = document.createElement("tr");
 row.innerHTML = `<td>${size}</td><td>${counts[size]}</td>`;
-
 summaryBody.appendChild(row);
 
 total += counts[size];
