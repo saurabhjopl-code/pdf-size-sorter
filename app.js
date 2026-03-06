@@ -13,32 +13,70 @@ const sizeOrder = [
 
 function normalizeSize(size){
 
-if(!size) return null;
+if(!size) return "NON-SIZE";
 
 size = size.toUpperCase().trim();
 
 if(size === "2XL") size = "XXL";
 if(size === "XXXL") size = "3XL";
 
-return size;
+if(sizeOrder.includes(size)) return size;
+
+return "NON-SIZE";
 
 }
 
-function extractSize(text){
+function extractSizeFromItems(items){
 
-const match = text.match(/\b(\d{1,2}XL|XXXL|XXL|XL|L|M|S|XS|FREE SIZE|FREESIZE|FS|UNSTITCHED|UN-STITCHED|SEMI-STITCHED)\b/i);
+let sizeHeaderX = null;
 
-if(match){
+for(let item of items){
 
-let size = match[1].toUpperCase();
+const text = item.str.trim().toUpperCase();
 
-size = normalizeSize(size);
+if(text === "SIZE"){
 
-return size;
+sizeHeaderX = item.transform[4];
+break;
 
 }
 
-return "UNKNOWN";
+}
+
+if(sizeHeaderX === null) return "NON-SIZE";
+
+let closestItem = null;
+let minDistance = Infinity;
+
+for(let item of items){
+
+const x = item.transform[4];
+const y = item.transform[5];
+
+const text = item.str.trim();
+
+if(!text) continue;
+
+const dx = Math.abs(x - sizeHeaderX);
+
+if(dx < 20){
+
+const dy = Math.abs(y);
+
+if(dy < minDistance){
+
+minDistance = dy;
+closestItem = item;
+
+}
+
+}
+
+}
+
+if(!closestItem) return "NON-SIZE";
+
+return normalizeSize(closestItem.str);
 
 }
 
@@ -70,9 +108,7 @@ statusDiv.innerText = "Reading page " + i + " / " + pdf.numPages;
 const page = await pdf.getPage(i);
 const textContent = await page.getTextContent();
 
-const text = textContent.items.map(t => t.str).join(" ");
-
-let size = extractSize(text);
+let size = extractSizeFromItems(textContent.items);
 
 if(!sizeOrder.includes(size)){
 otherSizes.add(size);
@@ -98,8 +134,8 @@ if(!aInBucket && !bInBucket){
 return a.size.localeCompare(b.size);
 }
 
-if(!aInBucket) return -1;
-if(!bInBucket) return 1;
+if(!aInBucket) return 1;
+if(!bInBucket) return -1;
 
 return sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
 
@@ -135,17 +171,6 @@ summaryBody.innerHTML = "";
 
 let total = 0;
 
-otherSizes.forEach(size => {
-
-let row = document.createElement("tr");
-row.innerHTML = `<td>${size}</td><td>${counts[size]}</td>`;
-
-summaryBody.appendChild(row);
-
-total += counts[size];
-
-});
-
 sizeOrder.forEach(size => {
 
 if(counts[size]){
@@ -158,6 +183,17 @@ summaryBody.appendChild(row);
 total += counts[size];
 
 }
+
+});
+
+otherSizes.forEach(size => {
+
+let row = document.createElement("tr");
+row.innerHTML = `<td>NON-SIZE</td><td>${counts[size]}</td>`;
+
+summaryBody.appendChild(row);
+
+total += counts[size];
 
 });
 
