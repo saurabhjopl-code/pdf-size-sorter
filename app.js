@@ -7,9 +7,8 @@ const summaryBody = document.querySelector("#summaryTable tbody");
 const marketplaceSection = document.getElementById("marketplaceSection");
 const marketplaceLogo = document.getElementById("marketplaceLogo");
 const marketplaceName = document.getElementById("marketplaceName");
-const progressFill = document.getElementById("progressFill");
 
-const turboSwitch = document.getElementById("turboMode");
+const progressFill = document.getElementById("progressFill");
 
 fileInput.addEventListener("change", () => {
 if(fileInput.files.length){
@@ -21,18 +20,12 @@ let sortedPdfBytes;
 let pages = [];
 let labelType = "MEESHO";
 
-/* ===============================
-Turbo Configuration
-=============================== */
-
-const NORMAL_BATCH = 5;
-const TURBO_BATCH = 20;
+const BATCH_SIZE = 5;
 
 const sizeOrder = [
 "XS","S","M","L","XL",
 "XXL","3XL","4XL","5XL","6XL","7XL","8XL","9XL","10XL"
 ];
-
 
 /* ===============================
 SIZE NORMALIZATION
@@ -53,30 +46,71 @@ return "NON-SIZE";
 
 }
 
-
 /* ===============================
-LABEL TYPE DETECTION
+MARKETPLACE DETECTION
 =============================== */
 
 function detectLabelType(items){
+
+let hasSizeHeader = false;
+let hasSkuDescription = false;
+let hasTracking = false;
 
 for(let item of items){
 
 const text = item.str.toUpperCase();
 
-if(text.includes("SKU ID | DESCRIPTION")){
-return "FLIPKART";
+if(text === "SIZE") hasSizeHeader = true;
+
+if(text.includes("SKU ID") || text.includes("DESCRIPTION")){
+hasSkuDescription = true;
+}
+
+if(text.includes("TRACKING NO") || text.includes("OTHER DEDUCTION")){
+hasTracking = true;
 }
 
 }
+
+if(hasTracking) return "NYKAA";
+
+if(hasSizeHeader) return "MEESHO";
+
+if(hasSkuDescription) return "FLIPKART";
 
 return "MEESHO";
 
 }
 
+/* ===============================
+NYKAA PAGE CHECK
+=============================== */
+
+function isNykaaPage(items){
+
+let keep = false;
+
+for(let item of items){
+
+const text = item.str.toUpperCase();
+
+if(
+text.includes("TRACKING NO") ||
+text.includes("OTHER DEDUCTION") ||
+text.includes("SHIPPING/CUSTOMER ADDRESS") ||
+text.includes("ORDER ID")
+){
+keep = true;
+}
+
+}
+
+return keep;
+
+}
 
 /* ===============================
-MEESHO SIZE EXTRACTOR
+MEESHO SIZE
 =============================== */
 
 function extractMeeshoSize(items){
@@ -126,9 +160,8 @@ return normalizeSize(bestCandidate);
 
 }
 
-
 /* ===============================
-FLIPKART SIZE EXTRACTOR
+FLIPKART SIZE
 =============================== */
 
 function extractFlipkartSize(items){
@@ -143,9 +176,7 @@ const match = text.match(skuRegex);
 
 if(match){
 
-const detectedSize = match[2];
-
-return normalizeSize(detectedSize);
+return normalizeSize(match[2]);
 
 }
 
@@ -154,7 +185,6 @@ return normalizeSize(detectedSize);
 return "NON-SIZE";
 
 }
-
 
 /* ===============================
 SIZE ROUTER
@@ -170,28 +200,8 @@ return extractMeeshoSize(items);
 
 }
 
-
 /* ===============================
-PROCESS SINGLE PAGE
-=============================== */
-
-async function processPage(pdf, pageNumber){
-
-const page = await pdf.getPage(pageNumber);
-const textContent = await page.getTextContent();
-
-let size = extractSize(textContent.items);
-
-return {
-pageNumber: pageNumber,
-size: size
-};
-
-}
-
-
-/* ===============================
-MAIN PROCESS ENGINE
+PROCESSING
 =============================== */
 
 async function startProcessing(){
@@ -203,12 +213,14 @@ alert("Upload PDF first");
 return;
 }
 
-const BATCH_SIZE = turboSwitch && turboSwitch.checked ? TURBO_BATCH : NORMAL_BATCH;
-
 statusDiv.innerText = "Reading PDF...";
 
 const arrayBuffer = await file.arrayBuffer();
+
+/* SAFE BUFFERS */
+
 const pdfBuffer = arrayBuffer.slice(0);
+const buildBuffer = arrayBuffer.slice(0);
 
 const loadingTask = pdfjsLib.getDocument({data: pdfBuffer});
 const pdf = await loadingTask.promise;
@@ -218,15 +230,81 @@ pages = [];
 let sizeCount = {};
 let otherSizes = new Set();
 
-/* Detect marketplace */
+/* DETECT LABEL TYPE */
 
 const firstPage = await pdf.getPage(1);
 const firstContent = await firstPage.getTextContent();
 
 labelType = detectLabelType(firstContent.items);
+
 updateMarketplaceUI(labelType);
 
-/* Process pages */
+/* ===============================
+NYKAA MODE
+=============================== */
+
+if(labelType === "NYKAA"){
+
+statusDiv.innerText = "Scanning Nykaa pages...";
+
+const { PDFDocument } = PDFLib;
+
+const newPdf = await PDFDocument.create();
+const existingPdf = await PDFDocument.load(buildBuffer);
+
+let matchedPages = 0;
+
+for(let i=1;i<=pdf.numPages;i++){
+
+statusDiv.innerText =
+"Scanning page " + i + " / " + pdf.numPages;
+
+progressFill.style.width =
+(i/pdf.numPages)*100 + "%";
+
+const page = await pdf.getPage(i);
+const textContent = await page.getTextContent();
+
+if(isNykaaPage(textContent.items)){
+
+const [copied] =
+await newPdf.copyPages(existingPdf,[i-1]);
+
+newPdf.addPage(copied);
+
+matchedPages++;
+
+}
+
+}
+
+/* SAFETY CHECK */
+
+if(matchedPages === 0){
+
+statusDiv.innerText =
+"No Nykaa label pages detected.";
+
+downloadBtn.disabled = true;
+
+return;
+
+}
+
+sortedPdfBytes = await newPdf.save();
+
+statusDiv.innerText =
+"Nykaa labels extracted: " + matchedPages + " pages";
+
+downloadBtn.disabled = false;
+
+return;
+
+}
+
+/* ===============================
+NORMAL LABEL PROCESSING
+=============================== */
 
 for(let i = 1; i <= pdf.numPages; i += BATCH_SIZE){
 
@@ -253,15 +331,14 @@ sizeCount[size] = (sizeCount[size] || 0) + 1;
 });
 
 statusDiv.innerText =
-"Reading page " + Math.min(i+BATCH_SIZE-1, pdf.numPages) + " / " + pdf.numPages;
+"Reading page " +
+Math.min(i+BATCH_SIZE-1, pdf.numPages)
++ " / " + pdf.numPages;
 
-if(progressFill){
-progressFill.style.width = ((i / pdf.numPages) * 100) + "%";
+progressFill.style.width =
+(i/pdf.numPages)*100 + "%";
+
 }
-
-}
-
-/* Sort pages */
 
 pages.sort((a,b)=>{
 
@@ -275,23 +352,25 @@ return a.size.localeCompare(b.size);
 if(!aInBucket) return 1;
 if(!bInBucket) return -1;
 
-return sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size);
+return sizeOrder.indexOf(a.size) -
+sizeOrder.indexOf(b.size);
 
 });
 
-
-/* Build sorted PDF */
+/* BUILD SORTED PDF */
 
 statusDiv.innerText = "Building sorted PDF...";
 
 const { PDFDocument } = PDFLib;
 
 const newPdf = await PDFDocument.create();
-const existingPdf = await PDFDocument.load(arrayBuffer);
+const existingPdf = await PDFDocument.load(buildBuffer);
 
 for(let p of pages){
 
-const [copied] = await newPdf.copyPages(existingPdf,[p.pageNumber-1]);
+const [copied] =
+await newPdf.copyPages(existingPdf,[p.pageNumber-1]);
+
 newPdf.addPage(copied);
 
 }
@@ -307,6 +386,23 @@ statusDiv.innerText = "Sorting complete";
 
 }
 
+/* ===============================
+PROCESS SINGLE PAGE
+=============================== */
+
+async function processPage(pdf, pageNumber){
+
+const page = await pdf.getPage(pageNumber);
+const textContent = await page.getTextContent();
+
+let size = extractSize(textContent.items);
+
+return {
+pageNumber: pageNumber,
+size: size
+};
+
+}
 
 /* ===============================
 SUMMARY
@@ -355,26 +451,30 @@ summaryBody.appendChild(totalRow);
 
 }
 
-
 /* ===============================
-DOWNLOAD SORTED PDF
+DOWNLOAD PDF
 =============================== */
 
 downloadBtn.addEventListener("click",()=>{
 
-const file = fileInput.files[0];
-const originalName = file.name.replace(".pdf","");
+const originalName =
+fileInput.files[0].name.replace(".pdf","");
 
-const blob = new Blob([sortedPdfBytes],{type:"application/pdf"});
+const newName = originalName + "_sorted.pdf";
+
+const blob =
+new Blob([sortedPdfBytes],{type:"application/pdf"});
+
 const url = URL.createObjectURL(blob);
 
 const a = document.createElement("a");
+
 a.href = url;
-a.download = originalName + "_sorted.pdf";
+a.download = newName;
+
 a.click();
 
 });
-
 
 /* ===============================
 ZIP EXPORT
@@ -406,10 +506,8 @@ for(const size in sizePages){
 
 const pdfDoc = await PDFDocument.create();
 
-const copiedPages = await pdfDoc.copyPages(
-sourcePdf,
-sizePages[size]
-);
+const copiedPages =
+await pdfDoc.copyPages(sourcePdf,sizePages[size]);
 
 copiedPages.forEach(p => pdfDoc.addPage(p));
 
@@ -432,14 +530,11 @@ a.click();
 
 });
 
-
 /* ===============================
-Marketplace UI
+MARKETPLACE UI
 =============================== */
 
 function updateMarketplaceUI(type){
-
-if(!marketplaceSection) return;
 
 marketplaceSection.style.display = "block";
 
@@ -449,6 +544,14 @@ marketplaceLogo.src = "assets/flipkart.png";
 marketplaceName.innerText = "Flipkart Labels";
 
 }
+
+else if(type === "NYKAA"){
+
+marketplaceLogo.src = "assets/nykaa.png";
+marketplaceName.innerText = "Nykaa Labels";
+
+}
+
 else{
 
 marketplaceLogo.src = "assets/meesho.jpg";
