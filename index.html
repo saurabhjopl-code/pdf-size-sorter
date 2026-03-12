@@ -30,6 +30,51 @@
 
 </header>
 
+<!-- TOTAL LABEL COUNTER -->
+
+<section class="counter">
+
+<div class="counter-card">
+
+<div class="counter-label">
+Total Labels Processed
+</div>
+
+<div id="totalLabels" class="counter-value">
+Loading...
+</div>
+
+</div>
+
+</section>
+
+<!-- MARKETPLACE STATS STRIP -->
+
+<section class="mp-stats">
+
+<div class="mp-card">
+
+<div class="mp-name">Meesho</div>
+<div id="mpMeesho" class="mp-value">0</div>
+
+</div>
+
+<div class="mp-card">
+
+<div class="mp-name">Flipkart</div>
+<div id="mpFlipkart" class="mp-value">0</div>
+
+</div>
+
+<div class="mp-card">
+
+<div class="mp-name">Nykaa</div>
+<div id="mpNykaa" class="mp-value">0</div>
+
+</div>
+
+</section>
+
 <div class="main-card">
 
 <section class="upload-box">
@@ -48,7 +93,7 @@
 
 </label>
 
-<!-- TURBO MODE SWITCH (NEW) -->
+<!-- TURBO MODE -->
 
 <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;">
 
@@ -136,18 +181,14 @@ const fileNameDisplay = document.getElementById("fileName");
 /* DRAG OVER */
 
 dropZone.addEventListener("dragover",(e)=>{
-
 e.preventDefault();
 dropZone.classList.add("drag-active");
-
 });
 
 /* DRAG LEAVE */
 
 dropZone.addEventListener("dragleave",()=>{
-
 dropZone.classList.remove("drag-active");
-
 });
 
 /* DROP */
@@ -179,17 +220,13 @@ uploadInput.dispatchEvent(new Event("change"));
 uploadInput.addEventListener("change",()=>{
 
 if(uploadInput.files.length){
-
 showFileName(uploadInput.files[0].name);
-
 }
 
 });
 
 function showFileName(name){
-
 fileNameDisplay.innerText = "Loaded File: " + name;
-
 }
 
 </script>
